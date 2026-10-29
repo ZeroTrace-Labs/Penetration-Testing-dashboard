@@ -1,0 +1,65 @@
+# WebShield
+
+WebShield is an authorized web application security assessment platform that combines automated security checks, analyst verification, evidence management, remediation tracking, and reporting in one workflow.
+
+The project was developed to move beyond a simple vulnerability dashboard. WebShield includes its own Python-based security engine that interacts with an authorized target, analyzes HTTP behaviour, generates potential findings, and sends them to a React dashboard for analyst review.
+
+> WebShield is designed only for systems that the tester owns or has explicit authorization to assess.
+
+---
+
+## Project Overview
+
+Traditional vulnerability dashboards mainly store findings after testing has already been performed using external tools.
+
+WebShield extends that workflow by adding its own controlled security-testing engine.
+
+The platform can:
+
+- Perform selected automated web security checks
+- Test authentication using an authorized lab account
+- Analyze JWT metadata and security properties
+- Perform bounded authentication rate-limit testing
+- Compare authorization behaviour between two controlled test accounts
+- Generate potential findings automatically
+- Allow an analyst to confirm or dismiss findings
+- Store manual and automated evidence
+- Track remediation and retesting
+- Generate a printable security assessment report
+
+---
+
+## Architecture
+
+```text
+Authorized Target
+      |
+      v
+WebShield React Dashboard
+      |
+      | HTTP / JSON
+      v
+FastAPI Security Engine
+      |
+      | httpx
+      v
+Target Application
+      |
+      v
+HTTP Response Analysis
+      |
+      v
+Potential Security Findings
+      |
+      v
+Analyst Review
+      |
+      +---- Confirm
+      |
+      +---- Dismiss
+      |
+      v
+Remediation / Retesting
+      |
+      v
+Security Report

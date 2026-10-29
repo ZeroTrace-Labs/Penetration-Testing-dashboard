@@ -1,0 +1,1759 @@
+import { useEffect, useState } from "react";
+import "./App.css";
+
+import NewAssessmentModal from "./NewAssessmentModal";
+import AddFindingModal from "./AddFindingModal";
+import SecurityScanner from "./SecurityScanner";
+
+function App() {
+  // =====================================================
+  // MODALS
+  // =====================================================
+
+  const [showAssessment, setShowAssessment] = useState(false);
+  const [showFinding, setShowFinding] = useState(false);
+
+  // =====================================================
+  // NAVIGATION
+  // =====================================================
+
+  const [activePage, setActivePage] = useState("Dashboard");
+
+  // =====================================================
+  // DATA
+  // =====================================================
+
+  const [assessment, setAssessment] = useState(null);
+  const [findings, setFindings] = useState([]);
+
+  // =====================================================
+  // LOAD SAVED WEBSHIELD DATA
+  // =====================================================
+
+  useEffect(() => {
+    const savedAssessment = localStorage.getItem(
+      "webshieldCurrentAssessment"
+    );
+
+    const savedFindings = localStorage.getItem(
+      "webshieldFindings"
+    );
+
+    if (savedAssessment) {
+      try {
+        setAssessment(JSON.parse(savedAssessment));
+      } catch (error) {
+        console.error(
+          "Could not load assessment:",
+          error
+        );
+      }
+    }
+
+    if (savedFindings) {
+      try {
+        const parsedFindings = JSON.parse(savedFindings);
+
+        if (Array.isArray(parsedFindings)) {
+          setFindings(parsedFindings);
+        }
+      } catch (error) {
+        console.error(
+          "Could not load findings:",
+          error
+        );
+      }
+    }
+  }, []);
+
+  // =====================================================
+  // MANUAL FINDING
+  // =====================================================
+
+  const handleFindingCreated = (newFinding) => {
+    setFindings((currentFindings) => {
+      const updatedFindings = [
+        newFinding,
+        ...currentFindings,
+      ];
+
+      localStorage.setItem(
+        "webshieldFindings",
+        JSON.stringify(updatedFindings)
+      );
+
+      return updatedFindings;
+    });
+  };
+
+  // =====================================================
+  // AUTOMATED SCANNER FINDINGS
+  // =====================================================
+
+  const handleScannerFindings = (scannerFindings) => {
+    if (
+      !Array.isArray(scannerFindings) ||
+      scannerFindings.length === 0
+    ) {
+      return;
+    }
+
+    setFindings((currentFindings) => {
+      // Prevent the same scanner finding being added
+      // every time the scan is repeated.
+      const existingKeys = new Set(
+        currentFindings.map(
+          (finding) =>
+            `${finding.title}|${finding.url || ""}`
+        )
+      );
+
+      const timestamp = Date.now();
+
+      const newScannerFindings = scannerFindings
+        .filter(
+          (finding) =>
+            !existingKeys.has(
+              `${finding.title}|${finding.url || ""}`
+            )
+        )
+        .map((finding, index) => ({
+          ...finding,
+
+          id: `AUTO-${timestamp}-${index + 1}`,
+
+          severity:
+            finding.severity?.toUpperCase() ||
+            "LOW",
+
+          status:
+            finding.status?.toUpperCase() ||
+            "OPEN",
+
+          source:
+            "WebShield Security Engine",
+
+          verification:
+            "POTENTIAL",
+        }));
+
+      if (newScannerFindings.length === 0) {
+        return currentFindings;
+      }
+
+      const updatedFindings = [
+        ...newScannerFindings,
+        ...currentFindings,
+      ];
+
+      localStorage.setItem(
+        "webshieldFindings",
+        JSON.stringify(updatedFindings)
+      );
+
+      return updatedFindings;
+    });
+  };
+
+  // =====================================================
+  // FINDING CALCULATIONS
+  // =====================================================
+
+  const activeFindings = findings.filter(
+    (finding) =>
+      finding.status !== "RESOLVED"
+  );
+
+  const criticalCount = activeFindings.filter(
+    (finding) =>
+      finding.severity === "CRITICAL"
+  ).length;
+
+  const highCount = activeFindings.filter(
+    (finding) =>
+      finding.severity === "HIGH"
+  ).length;
+
+  const mediumCount = activeFindings.filter(
+    (finding) =>
+      finding.severity === "MEDIUM"
+  ).length;
+
+  const lowCount = activeFindings.filter(
+    (finding) =>
+      finding.severity === "LOW"
+  ).length;
+
+  const resolvedCount = findings.filter(
+    (finding) =>
+      finding.status === "RESOLVED"
+  ).length;
+
+  const retestingCount = findings.filter(
+    (finding) =>
+      finding.status === "RETESTING"
+  ).length;
+
+  const openCount = findings.filter(
+    (finding) =>
+      finding.status === "OPEN"
+  ).length;
+
+  // =====================================================
+  // SECURITY SCORE
+  // =====================================================
+
+  const deductions =
+    criticalCount * 25 +
+    highCount * 15 +
+    mediumCount * 8 +
+    lowCount * 3;
+
+  const securityScore = Math.max(
+    0,
+    100 - deductions
+  );
+
+  let riskLevel = "Strong";
+
+  if (securityScore < 50) {
+    riskLevel = "High Risk";
+  } else if (securityScore < 75) {
+    riskLevel = "Needs Improvement";
+  } else if (securityScore < 90) {
+    riskLevel = "Moderate";
+  }
+
+  // =====================================================
+  // SEVERITY BAR
+  // =====================================================
+
+  const severityPercentage = (number) => {
+    if (activeFindings.length === 0) {
+      return "0%";
+    }
+
+    return `${Math.round(
+      (number / activeFindings.length) * 100
+    )}%`;
+  };
+
+  // =====================================================
+  // SIDEBAR
+  // =====================================================
+
+  const menuItems = [
+    "Dashboard",
+    "Assessments",
+    "Vulnerabilities",
+    "OWASP Top 10",
+    "Evidence",
+    "Remediation",
+    "Reports",
+  ];
+
+  // =====================================================
+  // PAGE TITLE
+  // =====================================================
+
+  const getPageTitle = () => {
+    switch (activePage) {
+      case "Dashboard":
+        return "Security Dashboard";
+
+      case "Assessments":
+        return "Security Assessments";
+
+      case "Vulnerabilities":
+        return "Vulnerability Management";
+
+      case "OWASP Top 10":
+        return "OWASP Top 10";
+
+      case "Evidence":
+        return "Security Evidence";
+
+      case "Remediation":
+        return "Remediation Tracking";
+
+      case "Reports":
+        return "Security Reports";
+
+      default:
+        return "Security Dashboard";
+    }
+  };
+
+  // =====================================================
+  // EVIDENCE RENDERER
+  // =====================================================
+
+  const EvidenceDisplay = ({ finding }) => {
+    if (!finding.evidence) {
+      return null;
+    }
+
+    const evidenceIsImage =
+      typeof finding.evidence === "string" &&
+      finding.evidence.startsWith("data:image");
+
+    // -----------------------------------------------------
+    // OLD MANUAL FINDING -> SCREENSHOT
+    // -----------------------------------------------------
+
+    if (evidenceIsImage) {
+      return (
+        <div className="finding-evidence">
+          <img
+            src={finding.evidence}
+            alt={`Evidence for ${finding.title}`}
+            title="Click to open full evidence"
+            onClick={() =>
+              window.open(
+                finding.evidence,
+                "_blank"
+              )
+            }
+          />
+
+          <span>
+            SCREENSHOT EVIDENCE • CLICK TO VIEW
+          </span>
+        </div>
+      );
+    }
+
+    // -----------------------------------------------------
+    // SECURITY ENGINE FINDING -> TEXT EVIDENCE
+    // -----------------------------------------------------
+
+    return (
+      <div
+        style={{
+          marginTop: "8px",
+          padding: "9px 11px",
+          maxWidth: "300px",
+          border:
+            "1px solid rgba(255,255,255,0.08)",
+          borderRadius: "6px",
+          background:
+            "rgba(255,255,255,0.025)",
+        }}
+      >
+        <span
+          style={{
+            display: "block",
+            fontSize: "8px",
+            fontWeight: "700",
+            letterSpacing: "1.2px",
+            color: "#ff4545",
+            marginBottom: "5px",
+          }}
+        >
+          SCANNER EVIDENCE
+        </span>
+
+        <small
+          style={{
+            display: "block",
+            fontSize: "10px",
+            lineHeight: "1.45",
+            color: "#8994a3",
+            wordBreak: "break-word",
+          }}
+        >
+          {String(finding.evidence)}
+        </small>
+      </div>
+    );
+  };
+
+  // =====================================================
+  // FINDING ROW
+  // =====================================================
+
+  const FindingRow = ({
+    finding,
+    showEvidence = false,
+  }) => {
+    return (
+      <div
+        className="finding-row"
+        key={finding.id}
+      >
+        <div>
+          <span className="finding-id">
+            {finding.id}
+          </span>
+
+          <strong>
+            {finding.title}
+          </strong>
+
+          {finding.source ===
+            "WebShield Security Engine" && (
+            <span
+              style={{
+                display: "block",
+                marginTop: "4px",
+                fontSize: "8px",
+                letterSpacing: "1px",
+                color: "#ff4545",
+              }}
+            >
+              AUTOMATED SECURITY ENGINE
+            </span>
+          )}
+
+          {showEvidence && (
+            <EvidenceDisplay
+              finding={finding}
+            />
+          )}
+        </div>
+
+        <span className="category">
+          {finding.category}
+        </span>
+
+        <span
+          className={`severity ${
+            finding.severity
+              ?.toLowerCase() || "low"
+          }`}
+        >
+          {finding.severity}
+        </span>
+
+        <span
+          className={`finding-status ${
+            finding.status
+              ?.toLowerCase() || "open"
+          }`}
+        >
+          {finding.status}
+        </span>
+      </div>
+    );
+  };
+
+  // =====================================================
+  // DASHBOARD
+  // =====================================================
+
+  const DashboardPage = () => {
+    return (
+      <>
+        {/* =============================================
+            SECURITY ENGINE
+        ============================================= */}
+
+        <SecurityScanner
+          onFindingsReceived={
+            handleScannerFindings
+          }
+        />
+
+        {/* =============================================
+            CURRENT TARGET
+        ============================================= */}
+
+        <section className="target-card">
+          <div className="target-left">
+            <div className="target-icon">
+              ◎
+            </div>
+
+            <div>
+              <p className="section-label">
+                CURRENT TARGET
+              </p>
+
+              <h2>
+                {assessment?.targetName ||
+                  "No Active Assessment"}
+              </h2>
+
+              <p className="target-url">
+                {assessment?.targetUrl ||
+                  "Create an assessment to begin"}
+              </p>
+            </div>
+          </div>
+
+          <div className="target-info">
+            <div>
+              <span>
+                ENVIRONMENT
+              </span>
+
+              <strong>
+                {assessment?.environment ||
+                  "Not Selected"}
+              </strong>
+            </div>
+
+            <div>
+              <span>
+                TESTING OS
+              </span>
+
+              <strong>
+                {assessment?.testingOs ||
+                  "Not Selected"}
+              </strong>
+            </div>
+
+            <div>
+              <span>
+                METHODOLOGY
+              </span>
+
+              <strong>
+                {assessment?.method ||
+                  "Not Selected"}
+              </strong>
+            </div>
+
+            <div>
+              <span>
+                STATUS
+              </span>
+
+              {assessment ? (
+                <strong className="active-text">
+                  ● ACTIVE
+                </strong>
+              ) : (
+                <strong>
+                  NOT STARTED
+                </strong>
+              )}
+            </div>
+          </div>
+        </section>
+
+        {/* =============================================
+            STATISTICS
+        ============================================= */}
+
+        <section className="stats">
+          <div className="stat-card security-score">
+            <div className="stat-top">
+              <span>
+                SECURITY SCORE
+              </span>
+
+              <span className="stat-icon">
+                ⚠
+              </span>
+            </div>
+
+            <div className="score-row">
+              <h2>
+                {assessment
+                  ? securityScore
+                  : "--"}
+              </h2>
+
+              <span>
+                /100
+              </span>
+            </div>
+
+            <div className="score-bar">
+              <div
+                className="score-progress"
+                style={{
+                  width: assessment
+                    ? `${securityScore}%`
+                    : "0%",
+                }}
+              ></div>
+            </div>
+
+            <small>
+              {assessment
+                ? `Risk level: ${riskLevel}`
+                : "Create an assessment first"}
+            </small>
+          </div>
+
+          <div className="stat-card">
+            <div className="stat-top">
+              <span>
+                TOTAL FINDINGS
+              </span>
+
+              <span className="stat-number-icon">
+                {findings.length}
+              </span>
+            </div>
+
+            <h2>
+              {String(
+                findings.length
+              ).padStart(2, "0")}
+            </h2>
+
+            <small>
+              Recorded security findings
+            </small>
+          </div>
+
+          <div className="stat-card danger-card">
+            <div className="stat-top">
+              <span>
+                HIGH RISK
+              </span>
+
+              <span className="danger-dot">
+              </span>
+            </div>
+
+            <h2>
+              {String(
+                criticalCount +
+                  highCount
+              ).padStart(2, "0")}
+            </h2>
+
+            <small>
+              Critical + high findings
+            </small>
+          </div>
+
+          <div className="stat-card resolved-card">
+            <div className="stat-top">
+              <span>
+                RESOLVED
+              </span>
+
+              <span className="resolved-dot">
+              </span>
+            </div>
+
+            <h2>
+              {String(
+                resolvedCount
+              ).padStart(2, "0")}
+            </h2>
+
+            <small>
+              Successfully remediated
+            </small>
+          </div>
+        </section>
+
+        {/* =============================================
+            FINDINGS + RISK
+        ============================================= */}
+
+        <section className="content-grid">
+          <div className="panel findings-panel">
+            <div className="panel-header">
+              <div>
+                <p className="section-label">
+                  ASSESSMENT RESULTS
+                </p>
+
+                <h3>
+                  Recent Security Findings
+                </h3>
+              </div>
+
+              <button
+                className="view-button"
+                disabled={!assessment}
+                onClick={() =>
+                  assessment &&
+                  setShowFinding(true)
+                }
+              >
+                + ADD FINDING
+              </button>
+            </div>
+
+            <div className="table-header">
+              <span>FINDING</span>
+              <span>CATEGORY</span>
+              <span>SEVERITY</span>
+              <span>STATUS</span>
+            </div>
+
+            <div className="findings-list">
+              {findings.length > 0 ? (
+                findings
+                  .slice(0, 5)
+                  .map((finding) => (
+                    <FindingRow
+                      key={finding.id}
+                      finding={finding}
+                      showEvidence={true}
+                    />
+                  ))
+              ) : (
+                <div className="empty-findings">
+                  <strong>
+                    No vulnerabilities recorded
+                  </strong>
+
+                  <span>
+                    Run an authorized security
+                    assessment or add a verified
+                    finding manually.
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* =========================================
+              RISK ANALYSIS
+          ========================================= */}
+
+          <div className="panel">
+            <p className="section-label">
+              RISK ANALYSIS
+            </p>
+
+            <h3>
+              Severity Distribution
+            </h3>
+
+            <div className="risk-list">
+              <Risk
+                label="Critical"
+                value={criticalCount}
+                width={severityPercentage(
+                  criticalCount
+                )}
+                type="critical"
+              />
+
+              <Risk
+                label="High"
+                value={highCount}
+                width={severityPercentage(
+                  highCount
+                )}
+                type="high"
+              />
+
+              <Risk
+                label="Medium"
+                value={mediumCount}
+                width={severityPercentage(
+                  mediumCount
+                )}
+                type="medium"
+              />
+
+              <Risk
+                label="Low"
+                value={lowCount}
+                width={severityPercentage(
+                  lowCount
+                )}
+                type="low"
+              />
+            </div>
+
+            <div className="risk-summary">
+              <div>
+                <span>
+                  OPEN
+                </span>
+
+                <strong>
+                  {openCount}
+                </strong>
+              </div>
+
+              <div>
+                <span>
+                  RETESTING
+                </span>
+
+                <strong>
+                  {retestingCount}
+                </strong>
+              </div>
+
+              <div>
+                <span>
+                  RESOLVED
+                </span>
+
+                <strong>
+                  {resolvedCount}
+                </strong>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* =============================================
+            TESTING ENVIRONMENT
+        ============================================= */}
+
+        <section className="testing-section">
+          <div>
+            <p className="section-label">
+              SECURITY TESTING ENVIRONMENT
+            </p>
+
+            <h3>
+              Assessment Methodology
+            </h3>
+          </div>
+
+          <div className="testing-tools">
+            <div className="tool">
+              <span className="tool-icon">
+                &gt;_
+              </span>
+
+              <div>
+                <strong>
+                  Burp Suite
+                </strong>
+
+                <small>
+                  Manual Testing
+                </small>
+              </div>
+            </div>
+
+            <div className="tool">
+              <span className="tool-icon">
+                Z
+              </span>
+
+              <div>
+                <strong>
+                  OWASP ZAP
+                </strong>
+
+                <small>
+                  Automated Scanning
+                </small>
+              </div>
+            </div>
+
+            <div className="tool">
+              <span className="tool-icon">
+                K
+              </span>
+
+              <div>
+                <strong>
+                  Kali Linux
+                </strong>
+
+                <small>
+                  Security Environment
+                </small>
+              </div>
+            </div>
+
+            <div className="tool">
+              <span className="tool-icon">
+                OW
+              </span>
+
+              <div>
+                <strong>
+                  OWASP Top 10
+                </strong>
+
+                <small>
+                  Testing Standard
+                </small>
+              </div>
+            </div>
+          </div>
+        </section>
+      </>
+    );
+  };
+
+  // =====================================================
+  // ASSESSMENTS PAGE
+  // =====================================================
+
+  const AssessmentsPage = () => {
+    return (
+      <>
+        <section className="target-card">
+          <div className="target-left">
+            <div className="target-icon">
+              ◎
+            </div>
+
+            <div>
+              <p className="section-label">
+                CURRENT ASSESSMENT
+              </p>
+
+              <h2>
+                {assessment?.targetName ||
+                  "No Active Assessment"}
+              </h2>
+
+              <p className="target-url">
+                {assessment?.targetUrl ||
+                  "Create your first assessment"}
+              </p>
+            </div>
+          </div>
+
+          <button
+            className="new-assessment"
+            onClick={() =>
+              setShowAssessment(true)
+            }
+          >
+            + NEW ASSESSMENT
+          </button>
+        </section>
+
+        <section className="content-grid">
+          <div className="panel findings-panel">
+            <p className="section-label">
+              ASSESSMENT INFORMATION
+            </p>
+
+            <h3>
+              Target Configuration
+            </h3>
+
+            {assessment ? (
+              <div className="risk-list">
+                <div className="risk-heading">
+                  <span>
+                    Target Name
+                  </span>
+
+                  <strong>
+                    {assessment.targetName}
+                  </strong>
+                </div>
+
+                <div className="risk-heading">
+                  <span>
+                    Target URL
+                  </span>
+
+                  <strong>
+                    {assessment.targetUrl}
+                  </strong>
+                </div>
+
+                <div className="risk-heading">
+                  <span>
+                    Environment
+                  </span>
+
+                  <strong>
+                    {assessment.environment}
+                  </strong>
+                </div>
+
+                <div className="risk-heading">
+                  <span>
+                    Testing OS
+                  </span>
+
+                  <strong>
+                    {assessment.testingOs}
+                  </strong>
+                </div>
+
+                <div className="risk-heading">
+                  <span>
+                    Methodology
+                  </span>
+
+                  <strong>
+                    {assessment.method}
+                  </strong>
+                </div>
+              </div>
+            ) : (
+              <div className="empty-findings">
+                <strong>
+                  No active assessment
+                </strong>
+              </div>
+            )}
+          </div>
+
+          <div className="panel">
+            <p className="section-label">
+              ASSESSMENT SUMMARY
+            </p>
+
+            <h3>
+              Current Results
+            </h3>
+
+            <div className="risk-summary">
+              <div>
+                <span>
+                  FINDINGS
+                </span>
+
+                <strong>
+                  {findings.length}
+                </strong>
+              </div>
+
+              <div>
+                <span>
+                  OPEN
+                </span>
+
+                <strong>
+                  {openCount}
+                </strong>
+              </div>
+
+              <div>
+                <span>
+                  RESOLVED
+                </span>
+
+                <strong>
+                  {resolvedCount}
+                </strong>
+              </div>
+            </div>
+          </div>
+        </section>
+      </>
+    );
+  };
+
+  // =====================================================
+  // VULNERABILITIES PAGE
+  // =====================================================
+
+  const VulnerabilitiesPage = () => {
+    return (
+      <section className="panel findings-panel">
+        <div className="panel-header">
+          <div>
+            <p className="section-label">
+              VULNERABILITY MANAGEMENT
+            </p>
+
+            <h3>
+              All Security Findings
+            </h3>
+          </div>
+
+          <button
+            className="view-button"
+            disabled={!assessment}
+            onClick={() =>
+              setShowFinding(true)
+            }
+          >
+            + ADD FINDING
+          </button>
+        </div>
+
+        <div className="table-header">
+          <span>FINDING</span>
+          <span>CATEGORY</span>
+          <span>SEVERITY</span>
+          <span>STATUS</span>
+        </div>
+
+        <div className="findings-list">
+          {findings.length > 0 ? (
+            findings.map(
+              (finding) => (
+                <FindingRow
+                  key={finding.id}
+                  finding={finding}
+                  showEvidence={true}
+                />
+              )
+            )
+          ) : (
+            <div className="empty-findings">
+              <strong>
+                No vulnerabilities available
+              </strong>
+            </div>
+          )}
+        </div>
+      </section>
+    );
+  };
+
+  // =====================================================
+  // OWASP PAGE
+  // =====================================================
+
+  const OwaspPage = () => {
+    const categories = [
+      {
+        code: "A01",
+        name: "Broken Access Control",
+      },
+      {
+        code: "A02",
+        name: "Security Misconfiguration",
+      },
+      {
+        code: "A03",
+        name: "Software Supply Chain Failures",
+      },
+      {
+        code: "A04",
+        name: "Cryptographic Failures",
+      },
+      {
+        code: "A05",
+        name: "Injection",
+      },
+      {
+        code: "A06",
+        name: "Insecure Design",
+      },
+      {
+        code: "A07",
+        name: "Authentication Failures",
+      },
+      {
+        code: "A08",
+        name:
+          "Software or Data Integrity Failures",
+      },
+      {
+        code: "A09",
+        name:
+          "Security Logging and Alerting Failures",
+      },
+      {
+        code: "A10",
+        name:
+          "Mishandling of Exceptional Conditions",
+      },
+    ];
+
+    return (
+      <section className="content-grid">
+        <div className="panel findings-panel">
+          <p className="section-label">
+            OWASP SECURITY STANDARD
+          </p>
+
+          <h3>
+            OWASP Top 10 Categories
+          </h3>
+
+          <div className="risk-list">
+            {categories.map(
+              (category) => (
+                <div
+                  className="risk-heading"
+                  key={category.code}
+                >
+                  <span>
+                    <strong>
+                      {category.code}
+                    </strong>
+                    {" — "}
+                    {category.name}
+                  </span>
+                </div>
+              )
+            )}
+          </div>
+        </div>
+
+        <div className="panel">
+          <p className="section-label">
+            FINDINGS MAPPED
+          </p>
+
+          <h3>
+            Current Assessment Coverage
+          </h3>
+
+          <div className="risk-list">
+            {findings.map(
+              (finding) => (
+                <div
+                  className="risk-heading"
+                  key={finding.id}
+                >
+                  <span>
+                    {finding.category}
+                  </span>
+
+                  <strong>
+                    {finding.id}
+                  </strong>
+                </div>
+              )
+            )}
+          </div>
+        </div>
+      </section>
+    );
+  };
+
+  // =====================================================
+  // EVIDENCE PAGE
+  // =====================================================
+
+  const EvidencePage = () => {
+    const evidenceFindings =
+      findings.filter(
+        (finding) =>
+          finding.evidence
+      );
+
+    return (
+      <section className="panel findings-panel">
+        <div className="panel-header">
+          <div>
+            <p className="section-label">
+              SECURITY EVIDENCE
+            </p>
+
+            <h3>
+              Assessment Evidence
+            </h3>
+          </div>
+
+          <strong>
+            {evidenceFindings.length} RECORDS
+          </strong>
+        </div>
+
+        <div className="table-header">
+          <span>FINDING</span>
+          <span>CATEGORY</span>
+          <span>SEVERITY</span>
+          <span>STATUS</span>
+        </div>
+
+        <div className="findings-list">
+          {evidenceFindings.length >
+          0 ? (
+            evidenceFindings.map(
+              (finding) => (
+                <FindingRow
+                  key={finding.id}
+                  finding={finding}
+                  showEvidence={true}
+                />
+              )
+            )
+          ) : (
+            <div className="empty-findings">
+              <strong>
+                No evidence available
+              </strong>
+            </div>
+          )}
+        </div>
+      </section>
+    );
+  };
+
+  // =====================================================
+  // REMEDIATION PAGE
+  // =====================================================
+
+  const RemediationPage = () => {
+    return (
+      <>
+        <section className="stats">
+          <div className="stat-card">
+            <div className="stat-top">
+              <span>
+                OPEN
+              </span>
+            </div>
+
+            <h2>
+              {String(
+                openCount
+              ).padStart(2, "0")}
+            </h2>
+
+            <small>
+              Awaiting remediation
+            </small>
+          </div>
+
+          <div className="stat-card">
+            <div className="stat-top">
+              <span>
+                RETESTING
+              </span>
+            </div>
+
+            <h2>
+              {String(
+                retestingCount
+              ).padStart(2, "0")}
+            </h2>
+
+            <small>
+              Verification required
+            </small>
+          </div>
+
+          <div className="stat-card resolved-card">
+            <div className="stat-top">
+              <span>
+                RESOLVED
+              </span>
+            </div>
+
+            <h2>
+              {String(
+                resolvedCount
+              ).padStart(2, "0")}
+            </h2>
+
+            <small>
+              Successfully remediated
+            </small>
+          </div>
+        </section>
+
+        <section className="panel findings-panel">
+          <p className="section-label">
+            REMEDIATION STATUS
+          </p>
+
+          <h3>
+            Finding Tracking
+          </h3>
+
+          <div className="table-header">
+            <span>FINDING</span>
+            <span>CATEGORY</span>
+            <span>SEVERITY</span>
+            <span>STATUS</span>
+          </div>
+
+          <div className="findings-list">
+            {findings.map(
+              (finding) => (
+                <FindingRow
+                  key={finding.id}
+                  finding={finding}
+                />
+              )
+            )}
+          </div>
+        </section>
+      </>
+    );
+  };
+
+  // =====================================================
+  // REPORTS PAGE
+  // =====================================================
+
+  const ReportsPage = () => {
+    return (
+      <>
+        <section className="target-card">
+          <div className="target-left">
+            <div className="target-icon">
+              ◫
+            </div>
+
+            <div>
+              <p className="section-label">
+                SECURITY ASSESSMENT REPORT
+              </p>
+
+              <h2>
+                {assessment?.targetName ||
+                  "WebShield Assessment"}
+              </h2>
+
+              <p className="target-url">
+                {assessment?.targetUrl ||
+                  "No target selected"}
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section className="stats">
+          <div className="stat-card security-score">
+            <div className="stat-top">
+              <span>
+                SECURITY SCORE
+              </span>
+            </div>
+
+            <h2>
+              {assessment
+                ? securityScore
+                : "--"}
+            </h2>
+
+            <small>
+              {riskLevel}
+            </small>
+          </div>
+
+          <div className="stat-card">
+            <div className="stat-top">
+              <span>
+                TOTAL FINDINGS
+              </span>
+            </div>
+
+            <h2>
+              {findings.length}
+            </h2>
+
+            <small>
+              Recorded findings
+            </small>
+          </div>
+
+          <div className="stat-card danger-card">
+            <div className="stat-top">
+              <span>
+                CRITICAL / HIGH
+              </span>
+            </div>
+
+            <h2>
+              {criticalCount +
+                highCount}
+            </h2>
+
+            <small>
+              Priority findings
+            </small>
+          </div>
+
+          <div className="stat-card resolved-card">
+            <div className="stat-top">
+              <span>
+                RESOLVED
+              </span>
+            </div>
+
+            <h2>
+              {resolvedCount}
+            </h2>
+
+            <small>
+              Remediated findings
+            </small>
+          </div>
+        </section>
+
+        <section className="panel findings-panel">
+          <p className="section-label">
+            REPORT CONTENT
+          </p>
+
+          <h3>
+            Security Findings Summary
+          </h3>
+
+          <div className="table-header">
+            <span>FINDING</span>
+            <span>CATEGORY</span>
+            <span>SEVERITY</span>
+            <span>STATUS</span>
+          </div>
+
+          <div className="findings-list">
+            {findings.map(
+              (finding) => (
+                <FindingRow
+                  key={finding.id}
+                  finding={finding}
+                  showEvidence={false}
+                />
+              )
+            )}
+          </div>
+        </section>
+      </>
+    );
+  };
+
+  // =====================================================
+  // PAGE SWITCHER
+  // =====================================================
+
+  const renderPage = () => {
+    switch (activePage) {
+      case "Dashboard":
+        return <DashboardPage />;
+
+      case "Assessments":
+        return <AssessmentsPage />;
+
+      case "Vulnerabilities":
+        return <VulnerabilitiesPage />;
+
+      case "OWASP Top 10":
+        return <OwaspPage />;
+
+      case "Evidence":
+        return <EvidencePage />;
+
+      case "Remediation":
+        return <RemediationPage />;
+
+      case "Reports":
+        return <ReportsPage />;
+
+      default:
+        return <DashboardPage />;
+    }
+  };
+
+  // =====================================================
+  // MAIN APPLICATION
+  // =====================================================
+
+  return (
+    <div className="app">
+      {/* =============================================
+          SIDEBAR
+      ============================================= */}
+
+      <aside className="sidebar">
+        <div className="brand">
+          <div className="logo">
+            WS
+          </div>
+
+          <div>
+            <h2>
+              WebShield
+            </h2>
+
+            <span>
+              SECURITY ASSESSMENT
+            </span>
+          </div>
+        </div>
+
+        <div className="nav-label">
+          MAIN MENU
+        </div>
+
+        <nav>
+          {menuItems.map(
+            (item) => (
+              <button
+                type="button"
+                key={item}
+                onClick={() =>
+                  setActivePage(item)
+                }
+                className={
+                  activePage === item
+                    ? "nav-item active"
+                    : "nav-item"
+                }
+              >
+                <span className="nav-dot">
+                </span>
+
+                {item}
+              </button>
+            )
+          )}
+        </nav>
+
+        <div className="sidebar-bottom">
+          <div className="system-status">
+            <div className="pulse">
+            </div>
+
+            <div>
+              <strong>
+                LAB ENVIRONMENT
+              </strong>
+
+              <span>
+                Systems Operational
+              </span>
+            </div>
+          </div>
+
+          <p className="version">
+            WebShield v2.0
+          </p>
+        </div>
+      </aside>
+
+      {/* =============================================
+          MAIN
+      ============================================= */}
+
+      <main className="main">
+        <header className="header">
+          <div>
+            <p className="eyebrow">
+              WEB APPLICATION SECURITY
+              ASSESSMENT
+            </p>
+
+            <h1>
+              {getPageTitle()}
+            </h1>
+
+            <p className="subtitle">
+              Vulnerability Assessment &
+              Penetration Testing Platform
+            </p>
+          </div>
+
+          <div className="header-actions">
+            <button
+              className="add-finding-button"
+              disabled={!assessment}
+              onClick={() =>
+                setShowFinding(true)
+              }
+            >
+              + ADD FINDING
+            </button>
+
+            <button
+              className="new-assessment"
+              onClick={() =>
+                setShowAssessment(true)
+              }
+            >
+              <span>
+                +
+              </span>
+
+              NEW ASSESSMENT
+            </button>
+          </div>
+        </header>
+
+        {/* CURRENT PAGE */}
+
+        {renderPage()}
+
+        {/* FOOTER */}
+
+        <footer>
+          <span>
+            WEBSHIELD SECURITY PLATFORM
+          </span>
+
+          <span>
+            AUTHORIZED SECURITY ASSESSMENT ONLY
+          </span>
+        </footer>
+
+        {/* =============================================
+            NEW ASSESSMENT MODAL
+        ============================================= */}
+
+        <NewAssessmentModal
+          open={showAssessment}
+          onClose={() =>
+            setShowAssessment(false)
+          }
+          onCreated={(newAssessment) => {
+            setAssessment(
+              newAssessment
+            );
+
+            localStorage.setItem(
+              "webshieldCurrentAssessment",
+              JSON.stringify(
+                newAssessment
+              )
+            );
+
+            setShowAssessment(
+              false
+            );
+          }}
+        />
+
+        {/* =============================================
+            ADD FINDING MODAL
+        ============================================= */}
+
+        <AddFindingModal
+          open={showFinding}
+          onClose={() =>
+            setShowFinding(false)
+          }
+          onCreated={
+            handleFindingCreated
+          }
+          assessment={
+            assessment
+          }
+          existingCount={
+            findings.length
+          }
+        />
+      </main>
+    </div>
+  );
+}
+
+// =====================================================
+// RISK COMPONENT
+// =====================================================
+
+function Risk({
+  label,
+  value,
+  width,
+  type,
+}) {
+  return (
+    <div className="risk-item">
+      <div className="risk-heading">
+        <span>
+          <i
+            className={`risk-dot ${type}`}
+          ></i>
+
+          {label}
+        </span>
+
+        <strong>
+          {value}
+        </strong>
+      </div>
+
+      <div className="risk-bar">
+        <div
+          className={`risk-progress ${type}`}
+          style={{
+            width,
+          }}
+        ></div>
+      </div>
+    </div>
+  );
+}
+
+export default App;
